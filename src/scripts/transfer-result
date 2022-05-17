@@ -1,0 +1,5 @@
+#!/bin/sh
+FILENAME=result-`cat /dev/urandom | head -c 256 | md5sum | head -c 20`.txt
+scp $1:~/test/result.txt $FILENAME
+echo "Running: ./scripts/explorer-analyze.py $FILENAME"
+./scripts/explorer-analyze.py $FILENAME

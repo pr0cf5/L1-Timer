@@ -1,0 +1,3 @@
+#!/bin/sh
+scp explorer $1:~/test
+scp scripts/explorer-run.py $1:~/test

@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
   for (int i = 0; i < EVSET_MAX_SZ; i++) {
     g_evset_size = i;
     for (int j = 0; j < REPS; j++) {
-      //cleanup();
+      cleanup();
       measure();
       results[j*2] = g_t1;
       results[j*2+1] = g_t2;
