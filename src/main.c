@@ -13,7 +13,7 @@
 #include "fixed-addrs.h"
 
 #define REPS 0x1000
-#define EVSET_MAX_SZ 8
+#define CACHESET_MAX_SZ 0x20
 #define CLEARSET_MAX_SZ 8
 #define MAX_BUFFER_SZ (1 << 25)
 
@@ -25,7 +25,7 @@ static uint64_t results[REPS];
 static uint64_t inline __attribute__((always_inline)) rdtsc_begin() {
 uint32_t high, low;
 asm volatile (
-    "lfence\n\t"
+    "CPUID\n\t"
     "RDTSC\n\t"
     "mov %%edx, %0\n\t"
     "mov %%eax, %1\n\t"
@@ -41,7 +41,7 @@ asm volatile(
     "RDTSCP\n\t"
     "mov %%edx, %0\n\t"
     "mov %%eax, %1\n\t"
-    "lfence\n\t"
+    "CPUID\n\t"
     : "=r" (high), "=r" (low)
     :
     : "rax", "rbx", "rcx", "rdx");
@@ -68,9 +68,10 @@ uint64_t measure(struct path *path, uint64_t next_elem) {
     register uint32_t trash;
     register uint64_t cycles;
     register struct path *cur;
-    volatile register char **clearset, **evset;
+    register volatile char *ptr;
+    volatile register char **clearset, **cacheset;
     trash = 0;
-    evset = (volatile char **)EVSET_ARRAY;
+    cacheset = (volatile char **)CACHESET_ARRAY;
     clearset = (volatile char **)CLEARSET_ARRAY;
     cur = path;
 #ifdef VALIDATE
@@ -80,9 +81,22 @@ uint64_t measure(struct path *path, uint64_t next_elem) {
     
     // first, set up the initial cache for set 0 
     for (i = 0; i < 0x1000; i++) {
-        for (j = 0; j < L1_ASSOC; j++) {
-            trash = *(clearset[j] + trash);
-        }
+        trash = *(clearset[0] + trash);
+        _mm_lfence();
+        trash = *(clearset[1] + trash);
+        _mm_lfence();
+        trash = *(clearset[2] + trash);
+        _mm_lfence();
+        trash = *(clearset[3] + trash);
+        _mm_lfence();
+        trash = *(clearset[4] + trash);
+        _mm_lfence();
+        trash = *(clearset[5] + trash);
+        _mm_lfence();
+        trash = *(clearset[6] + trash);
+        _mm_lfence();
+        trash = *(clearset[7] + trash);
+        _mm_lfence();
     }
 
 #ifdef VALIDATE
@@ -100,12 +114,15 @@ uint64_t measure(struct path *path, uint64_t next_elem) {
     // execute the sequence of loads
     while(cur) {
         trash = *(cur->addr + trash);
+        _mm_lfence();
         cur = cur->next;
-    }
+    }    
 
     // now, try to access one of the evsets
+    ptr = cacheset[next_elem];
+    _mm_lfence();
     cycles = rdtsc_begin();
-    trash = *(evset[next_elem] + trash);
+    trash = *(ptr + trash);
     cycles = rdtsc_end() - cycles;
     return cycles;
 }
@@ -113,7 +130,7 @@ uint64_t measure(struct path *path, uint64_t next_elem) {
 int main(int argc, char **argv) {
     size_t nlines;
     FILE *fp;
-    char **clearset, **evset;
+    char **clearset, **cacheset;
     uint64_t *misc_array;
     struct path *path;
     char *buffer;
@@ -121,8 +138,8 @@ int main(int argc, char **argv) {
         perror("mmap (g_hpage)");
         exit(-1);
     }
-    if (mmap((void *)(EVSET_ARRAY & PGMASK), PGSIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0) == MAP_FAILED) {
-        perror("mmap (EVSET_ARRAY)");
+    if (mmap((void *)(CACHESET_ARRAY & PGMASK), PGSIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0) == MAP_FAILED) {
+        perror("mmap (CACHESET_ARRAY)");
         exit(-1);
     }
     if (mmap((void *)(CLEARSET_ARRAY & PGMASK), PGSIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0) == MAP_FAILED) {
@@ -138,25 +155,24 @@ int main(int argc, char **argv) {
         exit(-1);
     }
     // initialize the eviction set
-    evset = (char **)EVSET_ARRAY;
+    cacheset = (char **)CACHESET_ARRAY;
     clearset = (char **)CLEARSET_ARRAY;
-    for (int i = 0; i < EVSET_MAX_SZ; i++) {
-        evset[i] = buffer + i * LINE_SZ * L1_SETS;
+    for (int i = 0; i < CACHESET_MAX_SZ; i++) {
+        cacheset[i] = buffer + i * LINE_SZ * L1_SETS;
     }
     for (int i = 0; i < CLEARSET_MAX_SZ; i++) {
-        clearset[i] = buffer + (i + EVSET_MAX_SZ) * LINE_SZ * L1_SETS;
+        clearset[i] = buffer + (i + CACHESET_MAX_SZ) * LINE_SZ * L1_SETS;
     }
-    shuffle(clearset, EVSET_MAX_SZ);
-    shuffle(evset, CLEARSET_MAX_SZ);
+    shuffle(cacheset, CACHESET_MAX_SZ);
+    shuffle(clearset, CLEARSET_MAX_SZ);
     // read path
     path = path_read();
     
-    for (int j = 0; j < L1_ASSOC; j++) {
-        for (int i = 0; i < REPS; i++) {
-            results[i] = measure(path, j);
+    for (int j = 0; j < REPS; j++) {
+        for (int i = 0; i < L1_ASSOC; i++) {
+            results[i] = measure(path, i);
         }
-        fwrite(results, 1, sizeof(results), fp);
+        fwrite(results, 1, L1_ASSOC*sizeof(results[0]), fp);
     }
-    
     fclose(fp);
 }

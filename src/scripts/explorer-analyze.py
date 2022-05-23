@@ -12,13 +12,13 @@ def parse_file(file_name):
     with open(file_name, "rb") as f:
         rawdata = f.read()
     data = {}
+    for i in range(L1_ASSOC):
+        data[i] = []
     ofs = 0
-    for j in range(L1_ASSOC):
-        temp = []
-        for i in range(REPS):
-            temp.append(u64(rawdata[ofs:ofs+8]))
+    for j in range(REPS):
+        for i in range(L1_ASSOC):
+            data[i].append(u64(rawdata[ofs:ofs+8]))
             ofs += 8
-        data[j] = temp
     return data
 
 def mean(dist):
@@ -32,8 +32,10 @@ if __name__ == "__main__":
     for i in range(L1_ASSOC):
         kdes.append(gaussian_kde(data[i]))
     for i in range(L1_ASSOC):
-        xx = np.linspace(0,60,REPS)
+        xx = np.linspace(0,200,10000)
         plt.figure(i)
-        plt.plot(xx, kdes[i](xx))
+        plt.hist(data[i], bins=np.linspace(0,200,200))
         plt.savefig("Index{}".format(i))
     
+    for i in range(L1_ASSOC):
+        print("index{}: {}".format(i, mean(data[i])))

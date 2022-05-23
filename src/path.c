@@ -60,11 +60,11 @@ struct path *path_alloc(char *addr) {
 }
 
 struct path *path_read() {
-    char **clearset, **evset;
+    char **clearset, **cacheset;
     uint32_t path_length, path_elem;
     FILE *fp;
     struct path *cur, *prev, *begin;
-    evset = (char **)EVSET_ARRAY;
+    cacheset = (char **)CACHESET_ARRAY;
     prev = NULL;
     begin = NULL;
     path_init();
@@ -82,10 +82,7 @@ struct path *path_read() {
             perror("fread(path_elem)");
             exit(-1);
         }
-        if (path_elem >= L1_ASSOC) {
-            printf("[-] corrupted path file (%d)\n", path_elem);
-        }
-        cur = path_alloc(evset[path_elem]);
+        cur = path_alloc(cacheset[path_elem]);
         if (prev) {
             prev->next = cur;
         }
