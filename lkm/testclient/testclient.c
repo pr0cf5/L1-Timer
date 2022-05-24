@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/syscall.h>
 #include <sys/fcntl.h>
 
 #define EXPLORER_DEV_PATH "/dev/explorer"
@@ -42,7 +44,7 @@ static int explorer_run(size_t cacheset_index, size_t reps) {
     req.cacheset_index = cacheset_index;
     req.buffer = result_buf;
     req.buffer_len = sizeof(result_buf);
-    if (ioctl(explorer_fd, EXPLORER_SET_PATH, &req) < 0) {
+    if (ioctl(explorer_fd, EXPLORER_RUN, &req) < 0) {
         perror("ioctl");
         return -1;
     }

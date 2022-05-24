@@ -30,6 +30,7 @@ MODULE_VERSION("0.1");
 
 /* static function definitions */
 static bool cacheset_init(char **set, size_t set_size);
+static void cacheset_fini(char **set, size_t set_size);
 static int explorer_open(struct inode *, struct file *);
 static int explorer_release(struct inode *, struct file *);
 static long explorer_ioctl(struct file *, unsigned int, unsigned long);
@@ -43,6 +44,7 @@ char *g_clearset[CLEARSET_SZ];
 
 static struct load_seq_path *g_path;
 static uint64_t result_buf[MAX_REPS];
+static char g_junk;
 
 static struct miscdevice explorer_dev;
 struct file_operations explorer_fops = 
@@ -66,6 +68,11 @@ struct runReq {
 
 
 static int __init explorer_init(void) {
+	
+    explorer_dev.minor = MISC_DYNAMIC_MINOR;
+    explorer_dev.name = "explorer";
+    explorer_dev.fops = &explorer_fops;
+
     // WARNING: There are memory leaks
     if (!pmc_avail()) {
         printk(KERN_ERR "CPU does not support PMC: explorer module load fail\n");
@@ -92,7 +99,10 @@ static int __init explorer_init(void) {
 }
 
 static void __exit explorer_exit(void) {
+    misc_deregister(&explorer_dev);
     path_fini();
+    cacheset_fini(g_cacheset, sizeof(g_cacheset)/sizeof(g_cacheset[0]));
+    cacheset_fini(g_clearset, sizeof(g_clearset)/sizeof(g_clearset[0]));
     printk(KERN_INFO "Explorer unloaded\n");
 }
 
@@ -109,20 +119,20 @@ static long explorer_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
         case EXPLORER_SET_PATH: {  
             struct setPathReq req;
             uint32_t *path_buf;
-            if (copy_from_user(&req, (void *)arg, sizeof(req)) != sizeof(req)) {
-                printk(KERN_ERR "Invalid address in EXPLORER_SET_PATH (1)\n");
+            if (copy_from_user(&req, (void __user *)arg, sizeof(req)) ) {
+                printk(KERN_ERR "Invalid address(%p) in EXPLORER_SET_PATH (1)\n", (void *)arg);
                 return -EFAULT;
             }
             if (req.path_len > PATH_LEN_MAX) {
                 printk(KERN_ERR "Path length is too long (%lu > %lu)\n", req.path_len, PATH_LEN_MAX);
                 return -E2BIG;
             }
-            if ((path_buf = (uint32_t *)kzalloc(req.path_len, GFP_KERNEL)) == NULL) {
+            if ((path_buf = (uint32_t *)kzalloc(sizeof(*path_buf) * req.path_len, GFP_KERNEL)) == NULL) {
                 printk(KERN_ERR "OOM in EXPLORER_SET_PATH\n");
                 return -ENOMEM;
             }
-            if (copy_from_user(path_buf, req.path, sizeof(*path_buf) * req.path_len) != sizeof(*path_buf) * req.path_len) {
-                printk(KERN_ERR "Invalid address in EXPLORER_SET_PATH (2)\n");
+            if (copy_from_user(path_buf, (void __user *)req.path, sizeof(*path_buf) * req.path_len)) {
+                printk(KERN_ERR "Invalid address(%p) in EXPLORER_SET_PATH (2)\n", (void *)req.path);
                 kfree(path_buf);
                 return -EFAULT;
             }
@@ -138,8 +148,8 @@ static long explorer_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
         case EXPLORER_RUN: {
             struct runReq req;
             size_t i;
-            if (copy_from_user(&req, (void *)arg, sizeof(req)) != sizeof(req)) {
-                printk(KERN_ERR "Invalid address in EXPLORER_RUN (1)\n");
+            if (copy_from_user(&req, (void __user *)arg, sizeof(req))) {
+                printk(KERN_ERR "Invalid address(%p) in EXPLORER_RUN (1)\n", (void *)arg);
                 return -EFAULT;
             }
             if (req.reps > MAX_REPS) {
@@ -153,8 +163,8 @@ static long explorer_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
             for (i = 0; i < req.reps; i++) {
                 result_buf[i] = explorer_single_run(req.cacheset_index);
             }
-            if (copy_to_user(req.buffer, result_buf, req.reps * sizeof(result_buf[0])) != req.reps * sizeof(result_buf[0])) {
-                printk(KERN_ERR "Invalid address in EXPLORER_RUN (2)\n");
+            if (copy_to_user(req.buffer, result_buf, req.reps * sizeof(result_buf[0]))) {
+                printk(KERN_ERR "Invalid address(%p) in EXPLORER_RUN (2)\n", (void *)req.buffer);
                 return -EFAULT;
             }
             return 0;
@@ -177,6 +187,13 @@ static bool cacheset_init(char **set, size_t set_size) {
         }
     }
     return true;
+}
+
+static void cacheset_fini(char **set, size_t set_size) {
+    size_t i;
+    for (i = 0; i < set_size; i++) {
+        free_page((unsigned long)set[i]);
+    }
 }
 
 static uint64_t explorer_single_run(size_t last_elem) {
@@ -229,6 +246,9 @@ static uint64_t explorer_single_run(size_t last_elem) {
 
     // exit peaceful world
     preempt_disable();
+
+    // prevent aggresive compiler optimizations from removing all loads
+    g_junk += trash; 
 
     return cycles;
 }

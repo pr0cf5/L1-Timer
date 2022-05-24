@@ -4,7 +4,7 @@
 
 #define L1_SETS 0x40
 #define LINE_SZ 0x40
-#define PATH_ARENA_SZ_BITS 20
+#define PATH_ARENA_SZ_BITS 10
 #define PATH_ARENA_SZ (1 << PATH_ARENA_SZ_BITS)
 
 static char *path_arena;

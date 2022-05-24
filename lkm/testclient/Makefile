@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-static
+CFLAGS=-static -g
 
 testclient: testclient.c
 	$(CC) $(CFLAGS) -o $@ $^
