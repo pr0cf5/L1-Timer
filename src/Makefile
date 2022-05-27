@@ -1,22 +1,14 @@
 CC=gcc
-CFLAGS=-O3 -g
+CFLAGS=-O3 -g -DUSE_PMC
+INCLUDEFLAGS=-I libpfc/include
 
-all: explorer l1-l2 path-test evset evset-gem5
+all: explorer
 
-explorer: main.c path.c
-	$(CC) $(CFLAGS) -o $@ $^
+explorer: explorer_main.c load_seq.c libpfc/libpfc.o
+	$(CC) $(INCLUDEFLAGS) $(CFLAGS) -o $@ $^
 
-l1-l2: l1-l2.c
-	$(CC) $(CFLAGS) -o $@ $^
-
-path-test: path-test.c path.c
-	$(CC) $(CFLAGS) -o $@ $^
-
-evset: evset.c
-	$(CC) $(CFLAGS) -o $@ $^
-
-evset-gem5: evset.c
-	$(CC) $(CFLAGS) -DGEM5 -o $@ $^
+libpfc/libpfc.o:
+	make -C libpfc
 
 clean:
-	rm -rf explorer l1-l2 path-test evset evset-gem5 *.png *.txt
+	rm -rf explorer *.png *.txt

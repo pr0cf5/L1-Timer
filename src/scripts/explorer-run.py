@@ -21,6 +21,6 @@ if __name__ == "__main__":
     REPS = 0x1000
     L1_ASSOC = 8
     # initial
-    seq = [0,1,2,3,4,5,6,7]
+    seq = [0,1,2,3,4,5,6,7,8,8]
     # X
     run(seq)
